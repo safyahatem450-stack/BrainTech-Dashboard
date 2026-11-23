@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>NeuroBand EEG Telemetry</title>
+<style>
+:root{--bg:#f3f5f9;--card:#fff;--tx:#14202e;--mut:#5d6b7c;--ac:#1d6fd8;--ok:#1f9d55;--bad:#d33b3b;--warn:#c27a00;--ln:#dde3ec;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d141d;--card:#161f2b;--tx:#e6edf5;--mut:#93a1b3;--ac:#4da3ff;--ok:#3ecf7b;--bad:#ff6b6b;--warn:#f0b04a;--ln:#27354a}}
+:root[data-theme="dark"]{--bg:#0d141d;--card:#161f2b;--tx:#e6edf5;--mut:#93a1b3;--ac:#4da3ff;--ok:#3ecf7b;--bad:#ff6b6b;--warn:#f0b04a;--ln:#27354a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--ln)}
+h1{font-size:18px;margin:0 auto 0 0}h2{font-size:13px;margin:0 0 8px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.warn{background:var(--card);border-left:4px solid var(--warn);margin:12px 16px;padding:8px 12px;border-radius:6px;font-size:13px}
+main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;padding:0 16px 24px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:10px;padding:12px}.wide{grid-column:1/-1}
+button,select{background:var(--ac);color:#fff;border:0;border-radius:6px;padding:7px 12px;font:inherit;cursor:pointer}
+select{background:var(--card);color:var(--tx);border:1px solid var(--ln)}button.sec{background:var(--card);color:var(--tx);border:1px solid var(--ln)}
+canvas{width:100%;height:130px;display:block;background:var(--bg);border-radius:6px}
+.row{display:flex;align-items:center;gap:8px;margin:5px 0}.row label{width:110px;color:var(--mut)}.bar{flex:1;height:14px;background:var(--bg);border-radius:7px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--ac);width:0;transition:width .3s}.val{width:64px;text-align:right;font-variant-numeric:tabular-nums}
+.big{font-size:22px;font-weight:600}.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g div{background:var(--bg);border-radius:8px;padding:8px}.g small{color:var(--mut);display:block}
+svg text{fill:var(--tx);font-size:10px}.pill{padding:2px 8px;border-radius:10px;font-size:12px;background:var(--bg)}
+#flick{height:40px;border-radius:6px;background:#888;display:none}#flick.on{display:block;animation:f .025s steps(1) infinite}@keyframes f{0%{opacity:1}50%{opacity:.05}}
+input[type=range]{flex:1}.hg{display:grid;grid-template-columns:minmax(220px,1.1fr) 1fr;gap:14px;align-items:center}#brain{width:100%;max-height:300px}#brain path.h{stroke:var(--ac);stroke-width:2;transition:fill .5s}#brain .gy path{fill:none;stroke:currentColor;opacity:.3;stroke-width:1.2}.tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.tools label{color:var(--mut)}table{width:100%;border-collapse:collapse}td,th{padding:3px 6px;border-bottom:1px solid var(--ln);text-align:left}@media print{header button,header select,.tools,#flick{display:none}}
+</style></head><body>
+<header><h1>🧠 NeuroBand · EEG Telemetry</h1>
+<select id="mode"><option value="live">Live (Web Serial)</option><option value="healthy" selected>Simulation: Healthy-like</option><option value="mci">Simulation: Mild slowing</option><option value="ad">Simulation: Marked slowing</option><option value="blink">Simulation: Eye-blink artifacts</option></select>
+<button id="conn">Connect ESP32-S3</button><span class="pill" id="st">Simulation</span></header>
+<div class="warn"><b>Research prototype, not a medical device.</b> Nothing here diagnoses Alzheimer’s disease or MCI. The simulation modes are synthetic signals made to exercise the display; they are not patient data. If Web Serial is blocked in this embedded view, download the page and open it from a local file in Chrome or Edge.</div>
+<main>
+<section class='card wide'><div class='tools'><span class='pill' id='sq'>Signal quality: –</span><span class='pill' id='rate'>0 samples/s</span><span class='pill' id='age'>no data yet</span><span class='pill' id='clock'>–</span><span class='pill' id='dur'>00:00</span><span class='pill' id='artp'>artifacts 0%</span><label>Counts per µV</label><input id='cal' type='number' value='8.8' step='0.1' min='1' style='width:70px;background:var(--card);color:var(--tx);border:1px solid var(--ln);border-radius:6px;padding:6px'><button id='mark' class='sec'>Mark event (M)</button></div><p style='color:var(--mut);font-size:12px;margin:8px 0 0'>Everything updates live: scope every frame, indicators 4 times per second, status every second. µV values use the counts-per-µV setting (8.8 assumes ADS1115 ±4.096 V and an AD8232 gain of about 1100; calibrate with a known signal before quoting µV).</p></section><section class='card wide'><h2>Live brain view</h2><div class='hg'><svg id='brain' viewBox='0 0 300 270'><path id='hL' class='h' style='fill:hsl(150 70% 50% / .4)' d='M148 24C100 14 52 40 38 90 26 135 40 190 78 224 100 244 128 250 148 246Z'/><path id='hR' class='h' style='fill:hsl(150 70% 50% / .4)' d='M152 24C200 14 248 40 262 90 274 135 260 190 222 224 200 244 172 250 152 246Z'/><g class='gy' style='color:var(--tx)'><path d='M58 78C80 62 102 90 128 70'/><path d='M50 120C78 104 96 134 130 112'/><path d='M52 164C80 150 100 176 130 158'/><path d='M70 205C92 192 112 214 132 202'/><path d='M242 78C220 62 198 90 172 70'/><path d='M250 120C222 104 204 134 170 112'/><path d='M248 164C220 150 200 176 170 158'/><path d='M230 205C208 192 188 214 168 202'/></g><circle id='gL' cx='105' cy='52' r='16' fill='var(--ac)' opacity='.4'/><circle id='gR' cx='195' cy='52' r='16' fill='var(--ac)' opacity='.4'/><circle cx='105' cy='52' r='5' fill='var(--tx)'/><circle cx='195' cy='52' r='5' fill='var(--tx)'/><text x='105' y='78' text-anchor='middle'>Fp1</text><text x='195' y='78' text-anchor='middle'>Fp2</text><text x='150' y='150' text-anchor='middle' opacity='.5'>parietal</text><text x='150' y='232' text-anchor='middle' opacity='.5'>occipital</text></svg><div><div style='color:var(--mut)'>Dominant rhythm</div><div class='big' id='dom'>–</div><div class='g' style='margin-top:8px'><div><small>Left side (Fp1) slowing index</small><span class='big' id='hl'>–</span></div><div><small>Right side (Fp2) slowing index</small><span class='big' id='hr'>–</span></div></div><p style='color:var(--mut);font-size:12px'>Colour shows each side’s slowing index from theta/alpha (green low, red high); the glow pulses with signal amplitude. Only the two frontal sites carry real data. The rest of the brain is a schematic.</p></div></div></section><section class='card wide'><h2>Session tools</h2><div class='tools'><button id='pause' class='sec'>Pause</button><button id='theme' class='sec'>Light/Dark</button><label>Scope ±</label><select id='sc'><option value='0' selected>Auto</option><option>500</option><option>1000</option><option>2000</option><option>3500</option><option>6000</option></select><label>Artifact limit</label><select id='th'><option>1500</option><option>2000</option><option selected>2600</option><option>4000</option></select><button id='rec'>Start recording</button><button id='exp' class='sec'>Export CSV</button><button id='prt' class='sec'>Print report</button><span id='recs' class='pill'>idle</span></div><p style='color:var(--mut);font-size:12px;margin:8px 0 0'>Recording stores the indicators every 0.25 s plus the raw two-channel stream. CSV export needs the page opened as a local file.</p></section><section class='card wide'><h2>Dual-channel oscilloscope (16-bit counts, last 4 s)</h2><div style="color:var(--mut)">Fp1 (ADS1115 A0)</div><canvas id="c1"></canvas><div style="color:var(--mut);margin-top:6px">Fp2 (ADS1115 A1)</div><canvas id="c2"></canvas></section>
+<section class="card"><h2>Head map and lead-off</h2>
+<svg viewBox="0 0 220 190" width="100%" height="200"><ellipse cx="110" cy="100" rx="78" ry="84" fill="none" stroke="currentColor" opacity=".4"/><path d="M100 18 L110 4 L120 18" fill="none" stroke="currentColor" opacity=".4"/>
+<g id="els"></g></svg>
+<div class="row"><label>Ch1 (GPIO 5/6)</label><span id="lo1" class="pill">–</span></div><div class="row"><label>Ch2 (GPIO 15/16)</label><span id="lo2" class="pill">–</span></div>
+<div class="row"><input type="checkbox" id="simlo"><label style="width:auto">Simulate Ch2 lead-off</label></div></section>
+<section class="card"><h2>Spectral power (relative)</h2><div id="bands"></div><div id="art" class="pill" style="margin-top:6px">Signal OK</div></section>
+<section class="card"><h2>Biomarker indicators</h2><div class="g">
+<div><small>Theta/Alpha ratio</small><span class="big" id="tar">–</span></div><div><small>Peak alpha freq.</small><span class="big" id="paf">–</span></div>
+<div><small>Sample entropy</small><span class="big" id="se">–</span></div><div><small>Fp1–Fp2 coherence</small><span class="big" id="coh">–</span></div></div>
+<p style="color:var(--mut);font-size:12px">Computed on a 2 s sliding window in the browser. Values from a 2-channel forehead montage are indicators for research, not clinical measures.</p></section>
+<section class="card"><h2>Context-aware interpretation</h2>
+<div class="row"><label>Stress</label><input type="range" id="stress" min="0" max="10" value="2"><span class="val" id="stv">2</span></div>
+<div class="row"><label>Caffeine (h ago)</label><input type="range" id="caf" min="0" max="12" value="12"><span class="val" id="cfv">12</span></div>
+<div class="row"><label>Sleep (hours)</label><input type="range" id="slp" min="0" max="10" step=".5" value="7.5"><span class="val" id="slv">7.5</span></div>
+<div class="row"><label>Slowing index</label><div class="bar"><i id="idxb"></i></div><span class="val" id="idx">–</span></div>
+<div id="ctx" style="margin-top:6px"></div>
+<p style="color:var(--mut);font-size:12px">The index blends theta/alpha ratio and peak-alpha shift (0 to 1). Stress, recent caffeine and short sleep each lower confidence, because they can mimic or mask slowing. A single session is never enough: look for the same pattern on repeated rested, morning recordings.</p></section>
+<section class='card'><h2>Live spectrum (0–40 Hz)</h2><canvas id='cs' style='height:150px'></canvas></section><section class='card'><h2>Channel statistics</h2><table id='cst'></table></section><section class='card wide'><h2>Trends (last 5 min)</h2><canvas id='ct' style='height:160px'></canvas><div style='font-size:12px;color:var(--mut)'>Blue theta/alpha · green peak alpha · amber coherence · red slowing index (each scaled to its own range)</div></section><section class='card'><h2>Session summary</h2><table id='sum'></table></section><section class='card'><h2>Event log</h2><div id='log' style='max-height:170px;overflow:auto;font-size:12px'></div></section><section class='card'><h2>Guided validation tests (live mode)</h2><div class='row'><button id='bl'>Blink test (20 s)</button><span id='bls' class='pill'>–</span></div><div class='row'><button id='al'>Eyes open / closed (3 cycles)</button><span id='als' class='pill'>–</span></div><div id='alr'></div><p style='color:var(--mut);font-size:12px'>Blink test: blink hard about every 2 s. Eyes test: follow the beeps (high tone = open, low tone = closed), 4 s settle then 26 s measured per phase. A closed/open alpha ratio above 1 across cycles supports real alpha reactivity. The simulation does not model eye closure.</p></section><section class='card'><h2>Auditory oddball (P300 estimate)</h2>
+<button id="p3">Run 60-tone test</button> <span id="p3s" class="pill">idle</span>
+<canvas id="c3" style="height:110px;margin-top:8px"></canvas><div id="p3r" style="margin-top:6px"></div>
+<p style="color:var(--mut);font-size:12px">Needs speakers or headphones. Averages Fp1 epochs (−100 to 600 ms) for rare 1500 Hz tones minus frequent 1000 Hz tones. About 12 rare trials gives a noisy estimate. In simulation, a synthetic P300 is injected for the selected profile.</p></section>
+<section class="card"><h2>40 Hz stimulation (experimental)</h2>
+<p style="margin:0 0 8px">Human clinical benefit of 40 Hz sensory stimulation is still under study. This panel is a demo of the signal path only, never a treatment.</p>
+<div class="row"><button id="g40">Start audio 40 Hz (60 s)</button></div>
+<div class="row"><input type="checkbox" id="vis"><label style="width:auto">Add visual flicker. I have no history of photosensitive seizures and accept the risk.</label></div>
+<div id="flick"></div><div id="gs" class="pill" style="margin-top:6px">off</div></section>
+</main>
+<script>
+const FS=250,$=id=>document.getElementById(id);
+const bufs=[[],[]];let total=0,lo=[0,0],simLast=0,simT=0,bumps=[],mode='healthy',port=null,reader=null;
+// electrodes
+const E={Fp1:[80,50],Fp2:[140,50],Fpz:[110,40],A1:[22,118],A2:[198,118]};
+$('els').innerHTML=Object.entries(E).map(([k,[x,y]])=>`<circle id="e${k}" cx="${x}" cy="${y}" r="9" fill="var(--ok)"/><text x="${x}" y="${y+22}" text-anchor="middle">${k}</text>`).join('');
+function setLO(){const c=[['Fp1','A1'],['Fp2','A2']];Object.keys(E).forEach(k=>$('e'+k).setAttribute('fill','var(--ok)'));
+c.forEach((p,i)=>{if(lo[i])p.forEach(k=>$('e'+k).setAttribute('fill','var(--bad)'));$('lo'+(i+1)).textContent=lo[i]?'disconnected':'connected';$('lo'+(i+1)).style.color=lo[i]?'var(--bad)':'var(--ok)'});
+if(lo[0]&&lo[1])$('eFpz').setAttribute('fill','var(--bad)')}
+function push(a,b,l1,l2){bufs[0].push(a);bufs[1].push(b);total++;lo=[l1,l2];if(rec.on)rec.raw.push(a+','+b);blinkDet(a);rx.n++;rx.t=performance.now();if(bufs[0].length>3000){bufs[0].splice(0,500);bufs[1].splice(0,500)}}
+// simulation (counts = uV*30)
+const P={healthy:{al:[10,22],th:6,de:3,be:5,coh:.7,lat:.3,amp:12},mci:{al:[9,13],th:14,de:5,be:4,coh:.45,lat:.36,amp:8},ad:{al:[8,7],th:20,de:12,be:3,coh:.25,lat:.4,amp:5},blink:{al:[10,20],th:6,de:3,be:5,coh:.7,lat:.3,amp:12}};
+function rn(){return(Math.random()+Math.random()+Math.random()-1.5)*1.6}
+function simS(t){const p=P[mode==='live'?'healthy':mode],r=[];const sh=(f,a,ph)=>a*Math.sin(2*Math.PI*f*t+ph);
+const common=sh(p.al[0],p.al[1],0)*p.coh+sh(5,p.th,1)*p.coh;
+for(let c=0;c<2;c++){let v=common+(1-p.coh)*(sh(p.al[0]+.1*c,p.al[1],c*2)+sh(5.3+c*.4,p.th,c))+sh(2+c*.3,p.de,c)+sh(20+c,p.be,c)+rn()*3;
+bumps.forEach(b=>{const d=t-b.t0-p.lat;v+=p.amp*Math.exp(-(d*d)/(2*.05*.05))});
+if(mode==='blink'){const ph=(t%3);if(ph<.25)v+=250*Math.sin(Math.PI*ph/.25)}r.push(v*CAL)}
+bumps=bumps.filter(b=>t-b.t0<2);return r}
+function simStep(){if(mode==='live')return;const now=performance.now(),n=Math.min(50,Math.floor((now-simLast)*FS/1000));if(n<=0)return;simLast+=n*1000/FS;
+for(let i=0;i<n;i++){simT+=1/FS;const[a,b]=simS(simT);push(a,b,0,$('simlo').checked?1:0)}}
+// scope
+function draw(cv,a){const w=cv.width=cv.clientWidth*devicePixelRatio,h=cv.height=cv.clientHeight*devicePixelRatio,x=cv.getContext('2d'),s=getComputedStyle(document.documentElement);
+x.strokeStyle=s.getPropertyValue('--ac');x.lineWidth=1.5*devicePixelRatio;x.beginPath();const d=a.slice(-1000),sc=SC||Math.max(200,...d.map(Math.abs))*1.2;d.forEach((v,i)=>{const X=i/1000*w,Y=h/2-Math.max(-sc,Math.min(sc,v))/sc*h/2;i?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke();
+x.strokeStyle=s.getPropertyValue('--ln');x.beginPath();x.moveTo(0,h/2);x.lineTo(w,h/2);x.stroke()}
+function frame(){simStep();if(!paused){draw($('c1'),bufs[0]);draw($('c2'),bufs[1]);brainAnim()}requestAnimationFrame(frame)}
+// DSP
+function fft(re,im){const n=re.length;for(let i=1,j=0;i<n;i++){let b=n>>1;for(;j&b;b>>=1)j^=b;j^=b;if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]]}}
+for(let l=2;l<=n;l<<=1){const a=-2*Math.PI/l;for(let i=0;i<n;i+=l)for(let k=0;k<l/2;k++){const wr=Math.cos(a*k),wi=Math.sin(a*k),u=i+k,v=u+l/2,tr=re[v]*wr-im[v]*wi,ti=re[v]*wi+im[v]*wr;re[v]=re[u]-tr;im[v]=im[u]-ti;re[u]+=tr;im[u]+=ti}}}
+function spec(x){const n=x.length,m=x.reduce((s,v)=>s+v,0)/n,re=new Float64Array(n),im=new Float64Array(n);for(let i=0;i<n;i++)re[i]=(x[i]-m)*(.5-.5*Math.cos(2*Math.PI*i/(n-1)));fft(re,im);return[re,im]}
+function bandP(psd,n,f1,f2){let s=0;for(let k=Math.ceil(f1*n/FS);k<f2*n/FS;k++)s+=psd[k];return s}
+function sampEn(x){const m=2,sd=Math.sqrt(x.reduce((s,v)=>s+(v-x.reduce((a,b)=>a+b,0)/x.length)**2,0)/x.length),r=.2*sd,N=x.length;
+const cnt=mm=>{let c=0;for(let i=0;i<N-m;i++)for(let j=i+1;j<N-m;j++){let ok=1;for(let k=0;k<mm;k++)if(Math.abs(x[i+k]-x[j+k])>r){ok=0;break}c+=ok}return c};const B=cnt(m),A=cnt(m+1);return B>0&&A>0?-Math.log(A/B):NaN}
+function coherence(a,b){const L=128,H=64;let sxx=new Float64Array(L/2),syy=new Float64Array(L/2),sr=new Float64Array(L/2),si=new Float64Array(L/2);
+for(let s=0;s+L<=a.length;s+=H){const[ar,ai]=spec(a.slice(s,s+L)),[br,bi]=spec(b.slice(s,s+L));for(let k=0;k<L/2;k++){sxx[k]+=ar[k]**2+ai[k]**2;syy[k]+=br[k]**2+bi[k]**2;sr[k]+=ar[k]*br[k]+ai[k]*bi[k];si[k]+=ai[k]*br[k]-ar[k]*bi[k]}}
+let t=0,c=0;for(let k=Math.ceil(1*L/FS);k<30*L/FS;k++){t+=(sr[k]**2+si[k]**2)/(sxx[k]*syy[k]+1e-12);c++}return t/c}
+const names=['Delta 0.5–4','Theta 4–8','Alpha 8–13','Beta 13–30'];$('bands').innerHTML=names.map((n,i)=>`<div class="row"><label>${n}</label><div class="bar"><i id="b${i}"></i></div><span class="val" id="bv${i}">–</span></div>`).join('');
+let last={tar:null,paf:null};
+function analyze(){if(bufs[0].length<512)return;const a=bufs[0].slice(-512),b=bufs[1].slice(-512);
+if(Math.max(...a.map(Math.abs),...b.map(Math.abs))>TH){$('art').textContent='Artifact rejected (blink or motion)';$('art').style.color='var(--warn)';return}
+$('art').textContent='Signal OK';$('art').style.color='var(--ok)';
+const[ar,ai]=spec(a),[br,bi]=spec(b),psd=new Float64Array(256);for(let k=0;k<256;k++)psd[k]=(ar[k]**2+ai[k]**2+br[k]**2+bi[k]**2)/2;
+const bd=[bandP(psd,512,.5,4),bandP(psd,512,4,8),bandP(psd,512,8,13),bandP(psd,512,13,30)],tot=bd.reduce((s,v)=>s+v,0);
+bd.forEach((v,i)=>{$('b'+i).style.width=(v/tot*100)+'%';$('bv'+i).textContent=(v/tot*100).toFixed(1)+'%'});
+const tar=bd[1]/bd[2];let pk=0,pf=10;for(let k=Math.ceil(7*512/FS);k<=13*512/FS;k++)if(psd[k]>pk){pk=psd[k];pf=k*FS/512}
+const se=sampEn(a.filter((_,i)=>i%2==0).slice(-250)),co=coherence(a,b);
+$('tar').textContent=tar.toFixed(2);$('paf').textContent=pf.toFixed(1)+' Hz';$('se').textContent=isNaN(se)?'–':se.toFixed(2);$('coh').textContent=(co*100).toFixed(0)+'%';last={tar,pf,se,co};hook(bd,tot);ctx()}
+function ctx(){const st=+$('stress').value,cf=+$('caf').value,sl=+$('slp').value;$('stv').textContent=st;$('cfv').textContent=cf>=12?'>12':cf;$('slv').textContent=sl;if(last.tar==null)return;
+const raw=Math.max(0,Math.min(1,.6*(last.tar-.8)/1.7+.4*(10-last.pf)/2));$('idx').textContent=raw.toFixed(2);$('idxb').style.width=raw*100+'%';
+let conf=1,notes=[];if(st>=6){conf-=.5;notes.push('High stress raises beta and lowers alpha, which can hide slowing. Re-record when calm.')}
+if(cf<4){conf-=.3;notes.push('Caffeine within 4 h can mask slowing. Prefer a morning baseline.')}
+if(sl<6){conf-=.4;notes.push('Short sleep raises theta and can mimic slowing. Check if it persists after rested nights.')}
+conf=Math.max(.1,conf);const lvl=raw>.6?'Marked slowing pattern':raw>.3?'Mild slowing pattern':'No slowing pattern';
+$('ctx').innerHTML=`<b>${lvl}</b> · confidence ${(conf*100).toFixed(0)}%`+(notes.length?'<ul style="margin:6px 0 0 16px;padding:0">'+notes.map(n=>'<li>'+n+'</li>').join('')+'</ul>':'<div style="color:var(--mut)">No known confounders set.</div>')+'<div style="color:var(--mut);margin-top:4px">A pattern is a reason to repeat the test and consult a clinician, not a diagnosis.</div>'}
+['stress','caf','slp'].forEach(i=>$(i).oninput=ctx);
+// P300
+let AC;function tone(f){AC=AC||new AudioContext();const o=AC.createOscillator(),g=AC.createGain();o.frequency.value=f;g.gain.value=.2;o.connect(g).connect(AC.destination);o.start();o.stop(AC.currentTime+.08)}
+$('p3').onclick=()=>{const seq=[];for(let i=0;i<60;i++)seq.push(i>2&&Math.random()<.2);const ep={s:[],o:[]};let i=0;$('p3').disabled=true;
+const run=()=>{if(i>=seq.length){setTimeout(()=>{fin(ep);$('p3').disabled=false},800);return}const odd=seq[i++],idx=total;tone(odd?1500:1000);if(mode!=='live'&&odd)bumps.push({t0:simT});
+setTimeout(()=>{const a=bufs[0],st=a.length-(total-idx)-25;if(st>=0){const e=a.slice(st,st+175);if(e.length==175&&Math.max(...e.map(Math.abs))<2600){const m=e.slice(0,25).reduce((s,v)=>s+v,0)/25;(odd?ep.o:ep.s).push(e.map(v=>v-m))}}},700);
+$('p3s').textContent=`trial ${i}/60`;setTimeout(run,700+Math.random()*200)};run()};
+function avg(l){return Array.from({length:175},(_,k)=>l.reduce((s,e)=>s+e[k],0)/(l.length||1))}
+function fin(ep){$('p3s').textContent='done';if(ep.o.length<4||ep.s.length<10){$('p3r').textContent='Too few clean trials ('+ep.o.length+' rare). Reduce movement and repeat.';return}
+const o=avg(ep.o),s=avg(ep.s),d=o.map((v,k)=>(v-s[k])/CAL);let pk=-1e9,pi=0;for(let k=25+62;k<=25+125;k++)if(d[k]>pk){pk=d[k];pi=k}
+$('p3r').innerHTML=`Rare trials: ${ep.o.length}, frequent: ${ep.s.length}. Peak in 250–500 ms window: <b>${((pi-25)*4)} ms</b>, amplitude ≈ <b>${pk.toFixed(1)} µV</b> (uncalibrated).<br><span style="color:var(--mut)">Latency from a single short session with 2 forehead channels is only a rough estimate.</span>`;
+const cv=$('c3'),w=cv.width=cv.clientWidth*devicePixelRatio,h=cv.height=cv.clientHeight*devicePixelRatio,x=cv.getContext('2d'),mx=Math.max(1,...d.map(Math.abs));x.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--ac');x.lineWidth=2;x.beginPath();d.forEach((v,k)=>{const X=k/174*w,Y=h/2-v/mx*h/2*.9;k?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke()}
+// 40 Hz
+let gsrc=null,gt=null;$('g40').onclick=()=>{if(gsrc){stopG();return}AC=AC||new AudioContext();const sr=AC.sampleRate,buf=AC.createBuffer(1,sr,sr),d=buf.getChannelData(0);for(let k=0;k<40;k++){const s=Math.floor(k*sr/40);for(let j=0;j<Math.floor(sr*.004);j++)d[s+j]=.3*Math.sin(2*Math.PI*1000*j/sr)*(1-j/(sr*.004))}
+gsrc=AC.createBufferSource();gsrc.buffer=buf;gsrc.loop=true;gsrc.connect(AC.destination);gsrc.start();if($('vis').checked)$('flick').classList.add('on');$('gs').textContent='running (auto-stops in 60 s)';$('g40').textContent='Stop';gt=setTimeout(stopG,60000)};
+function stopG(){if(gsrc){gsrc.stop();gsrc=null}clearTimeout(gt);$('flick').classList.remove('on');$('gs').textContent='off';$('g40').textContent='Start audio 40 Hz (60 s)'}
+// mode + serial
+$('mode').onchange=async e=>{mode=e.target.value;$('st').textContent=mode==='live'?(port?'Live':'Live: not connected'):'Simulation';if(mode!=='live'){if(port)await disc();simLast=performance.now()}};
+async function disc(){try{await reader.cancel()}catch(e){}try{await port.close()}catch(e){}port=null;$('conn').textContent='Connect ESP32-S3'}
+$('conn').onclick=async()=>{if(port){await disc();$('st').textContent='Disconnected';return}
+if(!('serial' in navigator)){$('st').textContent='Web Serial unavailable. Use Chrome or Edge on a local file.';return}
+try{port=await navigator.serial.requestPort();await port.open({baudRate:115200});mode='live';$('mode').value='live';$('st').textContent='Live';$('conn').textContent='Disconnect';bufs[0].length=bufs[1].length=0;
+const dec=new TextDecoderStream();port.readable.pipeTo(dec.writable).catch(()=>{});reader=dec.readable.getReader();let acc='';
+for(;;){const{value,done}=await reader.read();if(done)break;acc+=value;const ls=acc.split('\n');acc=ls.pop();for(const l of ls){const p=l.trim().split(',').map(Number);if(p.length>=4&&p.every(isFinite))push(p[0],p[1],p[2]?1:0,p[3]?1:0)}}}
+catch(e){$('st').textContent='Serial error: '+e.message;port=null;$('conn').textContent='Connect ESP32-S3'}};
+let TH=2600,SC=0,CAL=8.8,MK='',LT=0,paused=false,bl={on:false,n:0,cd:0};const rec={on:false,rows:[],raw:[],t0:0},al={on:false,ph:null,d:{open:[],closed:[]}},NL=String.fromCharCode(10);
+function blinkDet(a){if(!bl.on)return;if(bl.cd>0){bl.cd--;return}if(Math.abs(a)>TH*.5){bl.n++;bl.cd=75}}
+function hook(bd,tot){if(rec.on)rec.rows.push([((performance.now()-rec.t0)/1000).toFixed(1),last.tar.toFixed(3),last.pf.toFixed(2),isNaN(last.se)?'':last.se.toFixed(3),last.co.toFixed(3),...bd.map(v=>(v/tot).toFixed(4)),MK].join(','));MK='';LT=performance.now();if(al.on&&al.ph)al.d[al.ph].push(bd[2]/tot)}
+function dl(n,t){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download=n;a.click()}
+$('pause').onclick=()=>{paused=!paused;$('pause').textContent=paused?'Resume':'Pause'};
+$('theme').onclick=()=>{const d=document.documentElement;d.dataset.theme=getComputedStyle(d).getPropertyValue('--bg').trim()==='#0d141d'?'light':'dark'};
+$('sc').onchange=e=>SC=+e.target.value;$('th').onchange=e=>TH=+e.target.value;$('prt').onclick=()=>print();
+$('rec').onclick=()=>{if(rec.on){rec.on=false;$('rec').textContent='Start recording';$('recs').textContent=rec.rows.length+' rows saved';return}rec.rows=[];rec.raw=[];rec.t0=performance.now();rec.on=true;$('rec').textContent='Stop recording';$('recs').textContent='recording…'};
+$('exp').onclick=()=>{if(!rec.rows.length){$('recs').textContent='nothing recorded yet';return}dl('neuroband_metrics.csv','t_s,theta_alpha,paf_hz,sampen,coherence,delta,theta,alpha,beta,marker'+NL+rec.rows.join(NL));dl('neuroband_raw.csv','fp1,fp2'+NL+rec.raw.join(NL))};
+$('bl').onclick=()=>{if(bl.on)return;bl={on:true,n:0,cd:0};let s=20;tone(800);const iv=setInterval(()=>{if(--s>0){$('bls').textContent=s+' s · '+bl.n+' blinks';return}clearInterval(iv);bl.on=false;tone(500);$('bls').textContent='done: '+bl.n+' blinks in 20 s (target about 10)'},1000)};
+$('al').onclick=async()=>{if(al.on)return;al.on=true;const sl=ms=>new Promise(r=>setTimeout(r,ms)),m=x=>x.length?x.reduce((s,v)=>s+v,0)/x.length:NaN,res=[];
+for(let c=1;c<=3;c++){const mm={};for(const ph of['open','closed']){al.ph=null;$('als').textContent='cycle '+c+'/3: '+(ph==='open'?'EYES OPEN':'EYES CLOSED');tone(ph==='open'?900:500);await sl(4000);al.d[ph]=[];al.ph=ph;await sl(26000);al.ph=null;mm[ph]=m(al.d[ph])}res.push([c,mm.open,mm.closed])}
+al.on=false;$('als').textContent='done';const rr=res.map(r=>r[2]/r[1]).filter(isFinite);
+$('alr').innerHTML='<table><tr><th>Cycle</th><th>Alpha open</th><th>Alpha closed</th><th>Ratio</th></tr>'+res.map(r=>`<tr><td>${r[0]}</td><td>${(r[1]*100).toFixed(1)}%</td><td>${(r[2]*100).toFixed(1)}%</td><td><b>${(r[2]/r[1]).toFixed(2)}</b></td></tr>`).join('')+'</table>'+(rr.length?'<div>Mean ratio: <b>'+(rr.reduce((s,v)=>s+v,0)/rr.length).toFixed(2)+'</b> ('+rr.length+' valid cycles)</div>':'<div>No valid windows: too many artifacts or no signal.</div>')};
+function brainUpdate(){if(bufs[0].length<512)return;const P=[];for(let c=0;c<2;c++){const x=bufs[c].slice(-512);if(Math.max(...x.map(Math.abs))>TH)return;const[re,im]=spec(x),p=new Float64Array(256);for(let k=0;k<256;k++)p[k]=re[k]**2+im[k]**2;P.push(p)}
+const ix=P.map(p=>Math.max(0,Math.min(1,.6*(bandP(p,512,4,8)/bandP(p,512,8,13)-.8)/1.7)));['hL','hR'].forEach((id,i)=>$(id).style.fill=`hsl(${150-150*ix[i]} 70% 50% / .5)`);$('hl').textContent=ix[0].toFixed(2);$('hr').textContent=ix[1].toFixed(2);
+const s=[0,0,0,0];P.forEach(p=>[[.5,4],[4,8],[8,13],[13,30]].forEach(([a,b],i)=>s[i]+=bandP(p,512,a,b)));const k=s.indexOf(Math.max(...s));$('dom').textContent=['Delta','Theta','Alpha','Beta'][k]+' · '+['0.5–4','4–8','8–13','13–30'][k]+' Hz'}
+function brainAnim(){const rms=a=>{const x=a.slice(-60);return Math.sqrt(x.reduce((s,v)=>s+v*v,0)/(x.length||1))};[['gL',0],['gR',1]].forEach(([id,c])=>{const r=rms(bufs[c]);$(id).setAttribute('r',14+Math.min(26,r/60));$(id).setAttribute('opacity',(.25+Math.min(.5,r/1500)).toFixed(2))})}
+const rx={n:0,t:0,rate:0,last:0},HIST=[[],[],[],[]],CL=['#4da3ff','#3ecf7b','#f0b04a','#ff6b6b'],RAW={a:[],b:[],c:[],d:[],e:[]},SP=new Float64Array(83),T0=performance.now();let artE=0,prevLo=[0,0];
+function log(m){const d=$('log');d.insertAdjacentHTML('afterbegin','<div>'+new Date().toLocaleTimeString()+' · '+m+'</div>');while(d.children.length>60)d.lastChild.remove()}
+function mark(){log('MARKER');MK='MARK'}
+addEventListener('keydown',e=>{if((e.key==='m'||e.key==='M')&&!/INPUT|SELECT/.test(e.target.tagName))mark()});
+$('mark').onclick=mark;$('cal').onchange=e=>{CAL=Math.max(1,+e.target.value||8.8);log('Calibration: '+CAL+' counts per µV')};
+$('mode').addEventListener('change',e=>log('Source: '+e.target.selectedOptions[0].text));
+$('rec').addEventListener('click',()=>log(rec.on?'Recording started':'Recording stopped'));
+$('bl').addEventListener('click',()=>log('Blink test started'));$('al').addEventListener('click',()=>log('Eyes open/closed test started'));
+function drawSpec(P){const cv=$('cs'),w=cv.width=cv.clientWidth*devicePixelRatio,h=cv.height=cv.clientHeight*devicePixelRatio,x=cv.getContext('2d'),s=getComputedStyle(document.documentElement),X=f=>f/40*w;
+[[.5,4,'#6b7cff'],[4,8,'#18b6a8'],[8,13,'#f0b04a'],[13,30,'#ff6b6b']].forEach(([a,b,c])=>{x.fillStyle=c+'28';x.fillRect(X(a),0,X(b)-X(a),h)});
+for(let k=1;k<=82;k++)SP[k]=.7*SP[k]+.3*Math.sqrt((P[0][k]+P[1][k])/2);
+const mx=Math.max(1e-9,...SP);x.strokeStyle=s.getPropertyValue('--ac');x.lineWidth=2*devicePixelRatio;x.beginPath();for(let k=1;k<=82;k++){const Y=h-16-(SP[k]/mx)*(h-24);k>1?x.lineTo(X(k*FS/512),Y):x.moveTo(X(k*FS/512),Y)}x.stroke();
+x.fillStyle=s.getPropertyValue('--mut');x.font=(10*devicePixelRatio)+'px sans-serif';[0,10,20,30,40].forEach(f=>x.fillText(f+' Hz',Math.min(X(f),w-36*devicePixelRatio),h-3))}
+function drawTrend(){const cv=$('ct'),w=cv.width=cv.clientWidth*devicePixelRatio,h=cv.height=cv.clientHeight*devicePixelRatio,x=cv.getContext('2d');x.lineWidth=2*devicePixelRatio;HIST.forEach((H,i)=>{x.strokeStyle=CL[i];x.beginPath();H.forEach((v,k)=>{const X=k/299*w,Y=h-6-v*(h-12);k?x.lineTo(X,Y):x.moveTo(X,Y)});x.stroke()})}
+function sumTbl(){const st=a=>{if(!a.length)return['–','–','–'];const m=a.reduce((s,v)=>s+v,0)/a.length;return[Math.min(...a),m,Math.max(...a)].map(v=>v.toFixed(2))};
+$('sum').innerHTML='<tr><th></th><th>min</th><th>mean</th><th>max</th></tr>'+[['Theta/alpha',RAW.a],['Peak alpha (Hz)',RAW.b],['Sample entropy',RAW.c],['Coherence',RAW.d],['Slowing index',RAW.e]].map(([n,a])=>'<tr><td>'+n+'</td>'+st(a).map(v=>'<td>'+v+'</td>').join('')+'</tr>').join('')}
+function liveUpdate(){if(bufs[0].length<512)return;const X=[bufs[0].slice(-512),bufs[1].slice(-512)],art=X.some(x=>Math.max(...x.map(Math.abs))>TH);artE=.96*artE+.04*(art?1:0);if(art)return;
+const P=X.map(x=>{const[re,im]=spec(x),p=new Float64Array(256);for(let k=0;k<256;k++)p[k]=re[k]**2+im[k]**2;return p});drawSpec(P);
+const R=X.map((x,c)=>{const m=x.reduce((s,v)=>s+v,0)/512,al=bandP(P[c],512,8,13);return{rms:Math.sqrt(x.reduce((s,v)=>s+(v-m)**2,0)/512)/CAL,pp:(Math.max(...x)-Math.min(...x))/CAL,tar:bandP(P[c],512,4,8)/al,al,ar:al/bandP(P[c],512,.5,30)}});
+const faa=Math.log(R[1].al)-Math.log(R[0].al),row=(n,f)=>'<tr><td>'+n+'</td><td>'+f(R[0])+'</td><td>'+f(R[1])+'</td></tr>';
+$('cst').innerHTML='<tr><th></th><th>Fp1</th><th>Fp2</th></tr>'+row('RMS (µV)',r=>r.rms.toFixed(1))+row('Peak-to-peak (µV)',r=>r.pp.toFixed(0))+row('Theta/alpha',r=>r.tar.toFixed(2))+row('Alpha, relative',r=>(r.ar*100).toFixed(1)+'%')+'<tr><td>Frontal alpha asymmetry ln(R/L)</td><td colspan=2>'+faa.toFixed(2)+'</td></tr>'}
+function tick(){const now=performance.now();rx.rate=rx.n-rx.last;rx.last=rx.n;const age=now-rx.t;
+$('rate').textContent=rx.rate+' samples/s';$('rate').style.color=Math.abs(rx.rate-FS)>25?'var(--warn)':'';
+$('age').textContent=rx.t?(age<1500?'last sample '+Math.round(age)+' ms ago':'NO DATA'):'no data yet';$('age').style.color=mode==='live'&&age>1500?'var(--bad)':'';
+$('clock').textContent=new Date().toLocaleTimeString();const s=Math.floor((now-T0)/1000);$('dur').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');$('artp').textContent='artifacts '+(artE*100).toFixed(0)+'%';
+const q=(lo[0]||lo[1])?'Poor (lead-off)':artE>.4?'Poor (artifacts)':artE>.15?'Fair':'Good';$('sq').textContent='Signal quality: '+q;$('sq').style.color=q==='Good'?'var(--ok)':q==='Fair'?'var(--warn)':'var(--bad)';
+lo.forEach((v,i)=>{if(v!==prevLo[i])log('Ch'+(i+1)+(v?' lead-off':' contact restored'))});prevLo=lo.slice();
+if(last.tar!=null&&!paused&&now-LT<1500){const ix=+$('idx').textContent||0,se=isNaN(last.se)?0:last.se;[last.tar,last.pf,se,last.co,ix].forEach((v,i)=>{const a=RAW['abcde'[i]];a.push(v);if(a.length>3600)a.shift()});
+[Math.min(1,last.tar/4),Math.max(0,Math.min(1,(last.pf-6)/7)),Math.min(1,last.co),ix].forEach((v,i)=>{HIST[i].push(v);if(HIST[i].length>300)HIST[i].shift()});drawTrend();sumTbl()}}
+simLast=performance.now();setInterval(()=>{if(!paused){setLO();analyze();brainUpdate();liveUpdate()}},250);setInterval(tick,1000);requestAnimationFrame(frame);ctx();log('Dashboard started');
+</script></body></html>
